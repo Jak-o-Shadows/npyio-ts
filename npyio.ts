@@ -10,7 +10,7 @@ function string_replace_all(input: string, old: string, rep: string): string {
 }
 
 
-function nd_array_read(buf, row, dims: number[], dim_num: number, count: number, base_offset: number, offset_increment: number){
+function nd_array_read(buf, row, dims: number[], dim_num: number, count: number, base_offset: number, offset_increment: number, data_type: string){
 
     if( dim_num < 0 ){
         // we have gone through all the dimensions
@@ -22,7 +22,7 @@ function nd_array_read(buf, row, dims: number[], dim_num: number, count: number,
         let new_offset: number = base_offset;
         let ret: any[] = [];  // TODO: stricter type. This is an array of [number, any[]]
         for(let idx=0; idx<(count-1); idx++ ){
-            ret = nd_array_read(buf, [], dims, dim_num, dims[dim_num], new_offset, offset_increment);
+            ret = nd_array_read(buf, [], dims, dim_num, dims[dim_num], new_offset, offset_increment, data_type);
             new_offset = ret[1];
             row.push(ret[0]);
         }
@@ -32,7 +32,36 @@ function nd_array_read(buf, row, dims: number[], dim_num: number, count: number,
         let value: number;
         for(let idx=0; idx<count; idx++ ){
             base_offset += offset_increment;
-            value = buf.readUint16LE(base_offset);  // TODO: Read other data types in
+            switch( data_type ){
+                case 'uint8':
+                    value = buf.readUint8LE(base_offset);
+                    break;
+                case 'int8':
+                    value = buf.readInt8LE(base_offset);
+                    break;
+                case 'uint16':
+                    value = buf.readUint16LE(base_offset);
+                    break;
+                case 'int16':
+                    value = buf.readInt16LE(base_offset);
+                    break;
+                case 'uint32':
+                    value = buf.readUint32(base_offset);
+                    break;
+                case 'int32':
+                    value = buf.readInt32(base_offset);
+                    break;
+                case 'float32':
+                    value = buf.readFloatLE(base_offset);
+                    break;
+                case 'float64':
+                    value = buf.readDoubleLE(base_offset);
+                    break;
+                default:
+                    console.log(`data type ${data_type} not recognised. SKIPPING`);
+                    value = NaN;
+                    break;
+            }
             console.log(`Buffer Index ${base_offset} is ${value}`);
             row.push(value);
         }
@@ -85,32 +114,76 @@ export function read_npy(filepath: string) {
         // It is a single value
         let offsetIncrements: Array<number> = [0];
         let sizes: Array<number> = [0];
+        let types: Array<string> = [];
+        let fieldIndex: number = 0;
         switch( fields ){
+            case '|u1':
+                // Uint8
+                console.log('\tIs a uint8');
+                sizes[fieldIndex] = 1;
+                types[fieldIndex] = 'uint8';
+                break;
+            case '|i1':
+                // Int8
+                console.log('\tIt is a int8');
+                sizes[fieldIndex] = 1;
+                types[fieldIndex] = 'int8';
+                break;
             case '<u2':
-                let fieldIndex: number = 0;
                 // Uint16
                 console.log('\tIs a uint16');
                 sizes[fieldIndex] = 2;
-                offsetIncrements[fieldIndex] = sizes.slice(0, fieldIndex+1).reduce(
-                    (sum: number, current:number) => sum + current, 0
-                );
-
-                let ret = nd_array_read(buf,
-                    data,
-                    headerParsed.shape,
-                    headerParsed.shape.length-1,
-                    headerParsed.shape[headerParsed.shape.length-1],
-                    bufferOffsetToData,
-                    offsetIncrements[fieldIndex]);
-                data = ret[0]
-
-
-
+                types[fieldIndex] = 'uint16';
+                break;
+            case '<i2':
+                // Int16
+                console.log('\tIt is a int16');
+                sizes[fieldIndex] = 2;
+                types[fieldIndex] = 'int16';
+                break;
+            case '<u4':
+                // Uint32
+                console.log('\tIs a uint32');
+                sizes[fieldIndex] = 4;
+                types[fieldIndex] = 'uint32';
+                break;
+            case '<i4':
+                // Int32
+                console.log('\tIt is a int32');
+                sizes[fieldIndex] = 4;
+                types[fieldIndex] = 'int32';
+                break;
+            case '<f4':
+                // Float32
+                console.log('\tIt is a float32');
+                sizes[fieldIndex] = 4;
+                types[fieldIndex] = 'float32';
+                break;
+            case '<f8':
+                // Float64
+                console.log('\tIt is a float64');
+                sizes[fieldIndex] = 8;
+                types[fieldIndex] = 'float64';
                 break;
             default:
                 console.log(`Field ${fields} not recognised. SKIPPING`);
                 break;
         }
+
+        offsetIncrements[fieldIndex] = sizes.slice(0, fieldIndex+1).reduce(
+            (sum: number, current:number) => sum + current, 0
+        );
+
+
+        let ret = nd_array_read(buf,
+            data,
+            headerParsed.shape,
+            headerParsed.shape.length-1,
+            headerParsed.shape[headerParsed.shape.length-1],
+            bufferOffsetToData,
+            offsetIncrements[fieldIndex],
+            types[fieldIndex]);
+        data = ret[0]
     }
 
     // TODO: properly return the actual data
